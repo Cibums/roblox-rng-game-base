@@ -1,0 +1,9 @@
+[package]
+name = "cibum/roblox-rng-game-base"
+version = "0.1.0"
+realm = "shared"
+registry = "https://github.com/UpliftGames/wally-index"
+
+[dependencies]
+Promise = "evaera/promise@4.0.0"     # verify latest on wally.run
+Signal  = "sleitnick/signal@1.5.0"   # verify latest on wally.run

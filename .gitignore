@@ -1,0 +1,12 @@
+# Wally output
+/Packages
+/ServerPackages
+/DevPackages
+
+# Generated sourcemap for the Luau LSP
+/sourcemap.json
+
+# Studio place files (binary; your code is the source of truth)
+*.rbxl
+*.rbxlx
+*.rbxl.lock
