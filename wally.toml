@@ -7,3 +7,6 @@ registry = "https://github.com/UpliftGames/wally-index"
 [dependencies]
 Promise = "evaera/promise@4.0.0"     # verify latest on wally.run
 Signal  = "sleitnick/signal@1.5.0"   # verify latest on wally.run
+
+[server-dependencies]
+ProfileStore = "lm-loleris/profilestore@1.0.3"
