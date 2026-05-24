@@ -7,21 +7,13 @@ local MoneyService = {}
 local function syncBalance(player: Player)
 	local data = DataService.GetData(player)
 	if data then
-
 		local leaderstats = player:FindFirstChild("leaderstats")
 		if leaderstats then
 			local coins = leaderstats:FindFirstChild("Coins")
-			local gems = leaderstats:FindFirstChild("Gems")
-			
-			if coins then 
-				coins.Value = data.Coins 
-			end
-
-			if gems then 
-				gems.Value = data.Gems 
-			end
+			local gems  = leaderstats:FindFirstChild("Gems")
+			if coins then coins.Value = data.Coins end
+			if gems  then gems.Value  = data.Gems  end
 		end
-
 		Remotes.UpdateBalance:FireClient(player, {
 			Coins = data.Coins,
 			Gems  = data.Gems,
@@ -34,13 +26,13 @@ local function setupLeaderstats(player: Player, data)
 	leaderstats.Name = "leaderstats"
 	leaderstats.Parent = player
 
-	local coins = Instance.new("IntValue")
-	coins.Name = "Coins"
+	local coins = Instance.new("NumberValue")
+	coins.Name  = "Coins"
 	coins.Value = data.Coins
 	coins.Parent = leaderstats
 
-	local gems = Instance.new("IntValue")
-	gems.Name = "Gems"
+	local gems = Instance.new("NumberValue")
+	gems.Name  = "Gems"
 	gems.Value = data.Gems
 	gems.Parent = leaderstats
 end
@@ -50,12 +42,12 @@ function MoneyService.OnPlayerReady(player: Player)
 	syncBalance(player)
 end
 
+-- Pure data writes — no remote fired
 function MoneyService.AddCoins(player: Player, amount: number)
 	assert(type(amount) == "number" and amount > 0, "Invalid amount")
 	local data = DataService.GetData(player)
 	if not data then return end
 	data.Coins += amount
-	syncBalance(player)
 end
 
 function MoneyService.SpendCoins(player: Player, amount: number): boolean
@@ -64,7 +56,7 @@ function MoneyService.SpendCoins(player: Player, amount: number): boolean
 	if not data then return false end
 	if data.Coins < amount then return false end
 	data.Coins -= amount
-	syncBalance(player)
+	syncBalance(player)  -- spend is an explicit action; sync immediately
 	return true
 end
 
@@ -73,6 +65,19 @@ function MoneyService.AddGems(player: Player, amount: number)
 	local data = DataService.GetData(player)
 	if not data then return end
 	data.Gems += amount
+end
+
+function MoneyService.SpendGems(player: Player, amount: number): boolean
+	assert(type(amount) == "number" and amount > 0, "Invalid amount")
+	local data = DataService.GetData(player)
+	if not data then return false end
+	if data.Gems < amount then return false end
+	data.Gems -= amount
+	syncBalance(player)
+	return true
+end
+
+function MoneyService.SyncBalance(player: Player)
 	syncBalance(player)
 end
 
