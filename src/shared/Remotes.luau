@@ -3,9 +3,16 @@ local RunService = game:GetService("RunService")
 
 local IS_SERVER = RunService:IsServer()
 
-local REMOTE_NAMES = {
+local REMOTE_EVENT_NAMES = {
 	"UpdateBalance",
 	"RequestBalance",
+	"ShowOfflineEarnings",
+	"ShowGachaResult",
+	"ShowDailyStreak",
+}
+
+local REMOTE_FUNCTION_NAMES = {
+	"RollGacha",
 }
 
 local folder
@@ -14,8 +21,14 @@ if IS_SERVER then
 	folder.Name = "Remotes"
 	folder.Parent = ReplicatedStorage
 
-	for _, name in REMOTE_NAMES do
+	for _, name in REMOTE_EVENT_NAMES do
 		local remote = Instance.new("RemoteEvent")
+		remote.Name = name
+		remote.Parent = folder
+	end
+
+	for _, name in REMOTE_FUNCTION_NAMES do
+		local remote = Instance.new("RemoteFunction")
 		remote.Name = name
 		remote.Parent = folder
 	end
@@ -24,7 +37,16 @@ else
 end
 
 local Remotes = {}
-for _, name in REMOTE_NAMES do
+
+for _, name in REMOTE_EVENT_NAMES do
+	if IS_SERVER then
+		Remotes[name] = folder:FindFirstChild(name)
+	else
+		Remotes[name] = folder:WaitForChild(name, 10)
+	end
+end
+
+for _, name in REMOTE_FUNCTION_NAMES do
 	if IS_SERVER then
 		Remotes[name] = folder:FindFirstChild(name)
 	else

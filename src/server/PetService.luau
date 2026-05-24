@@ -5,7 +5,6 @@ local Types = require(game.ReplicatedStorage.Shared.Types)
 
 local PetService = {}
 
--- Creates a new OwnedPet instance from a collectible id
 local function createOwnedPet(collectibleId: string): Types.OwnedPet
 	return {
 		instanceId    = HttpService:GenerateGUID(false),
@@ -16,12 +15,47 @@ local function createOwnedPet(collectibleId: string): Types.OwnedPet
 	}
 end
 
--- Gives a player a pet and optionally auto-equips it
+local function getIncome(ownedPet: Types.OwnedPet): number
+	local def = CollectiblesData.ById[ownedPet.collectibleId]
+	return def and def.passiveIncomePerSec or 0
+end
+
+local function getWeakestEquipped(data): (string?, number)
+	local weakestId = nil
+	local weakestIncome = math.huge
+
+	for _, instanceId in data.EquippedPetIds do
+		local owned = data.OwnedPets[instanceId]
+		if owned then
+			local income = getIncome(owned)
+			if income < weakestIncome then
+				weakestIncome = income
+				weakestId = instanceId
+			end
+		end
+	end
+
+	return weakestId, weakestIncome == math.huge and 0 or weakestIncome
+end
+
+-- Unequips a pet by instance ID
+local function unequip(data, instanceId: string)
+	local owned = data.OwnedPets[instanceId]
+	if owned then
+		owned.isEquipped = false
+	end
+	for i, id in data.EquippedPetIds do
+		if id == instanceId then
+			table.remove(data.EquippedPetIds, i)
+			break
+		end
+	end
+end
+
 function PetService.GivePet(player: Player, collectibleId: string, autoEquip: boolean?): Types.OwnedPet?
 	local data = DataService.GetData(player)
 	if not data then return nil end
 
-	-- Validate the collectible exists
 	if not CollectiblesData.ById[collectibleId] then
 		warn("[PetService] Unknown collectibleId:", collectibleId)
 		return nil
@@ -30,15 +64,27 @@ function PetService.GivePet(player: Player, collectibleId: string, autoEquip: bo
 	local pet = createOwnedPet(collectibleId)
 	data.OwnedPets[pet.instanceId] = pet
 
-	if autoEquip and #data.EquippedPetIds < data.MaxEquipSlots then
-		pet.isEquipped = true
-		table.insert(data.EquippedPetIds, pet.instanceId)
+	if autoEquip then
+		local newIncome = CollectiblesData.ById[collectibleId].passiveIncomePerSec
+
+		if #data.EquippedPetIds < data.MaxEquipSlots then
+			-- Free slot available — equip directly
+			pet.isEquipped = true
+			table.insert(data.EquippedPetIds, pet.instanceId)
+		else
+			-- All slots full — replace the weakest if the new pet is better
+			local weakestId, weakestIncome = getWeakestEquipped(data)
+			if weakestId and newIncome > weakestIncome then
+				unequip(data, weakestId)
+				pet.isEquipped = true
+				table.insert(data.EquippedPetIds, pet.instanceId)
+			end
+		end
 	end
 
 	return pet
 end
 
--- Returns the Pet definitions for all currently equipped pets
 function PetService.GetEquippedPetDefinitions(player: Player): { Types.Pet }
 	local data = DataService.GetData(player)
 	if not data then return {} end
@@ -57,15 +103,10 @@ function PetService.GetEquippedPetDefinitions(player: Player): { Types.Pet }
 	return definitions
 end
 
--- Gives a starter pet to new players on first join
 function PetService.GiveStarterPetIfNeeded(player: Player)
 	local data = DataService.GetData(player)
 	if not data then return end
-
-	-- Only runs once — if they already have pets, skip
 	if next(data.OwnedPets) ~= nil then return end
-
-	-- Give the first Common pet, auto-equip it
 	PetService.GivePet(player, "pet_common_01", true)
 	print("[PetService] Gave starter pet to", player.Name)
 end

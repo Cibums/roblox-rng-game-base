@@ -1,3 +1,5 @@
 print("[Client] boot script running")
 local MoneyController = require(script.Parent.MoneyController)
+local GachaController = require(script.Parent.GachaController)
 MoneyController.Init()
+GachaController.Init()

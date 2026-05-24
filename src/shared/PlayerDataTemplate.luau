@@ -9,4 +9,5 @@ return {
 	OwnedPets                = {},
 	EquippedPetIds           = {},
 	MaxEquipSlots            = 3,
+	ProcessedReceipts        = {},
 }

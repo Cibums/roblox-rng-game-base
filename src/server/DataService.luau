@@ -33,6 +33,7 @@ end
 local function onPlayerRemoving(player: Player)
 	local profile = Profiles[player]
 	if profile then
+		profile.Data.OfflineEarningsTimestamp = os.time()
 		profile:EndSession()
 	end
 end
@@ -47,7 +48,7 @@ end
 local DataService = {}
 
 function DataService.GetProfile(player: Player)
-	return Profiles[player]   -- returns nil if not loaded yet
+	return Profiles[player]
 end
 
 function DataService.GetData(player: Player)

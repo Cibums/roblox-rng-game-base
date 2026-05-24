@@ -1,24 +1,34 @@
 local Players = game:GetService("Players")
 local DataService = require(script.Parent.DataService)
+local PetService = require(script.Parent.PetService)
 local Remotes = require(game.ReplicatedStorage.Shared.Remotes)
 
 local MoneyService = {}
 
 local function syncBalance(player: Player)
 	local data = DataService.GetData(player)
-	if data then
-		local leaderstats = player:FindFirstChild("leaderstats")
-		if leaderstats then
-			local coins = leaderstats:FindFirstChild("Coins")
-			local gems  = leaderstats:FindFirstChild("Gems")
-			if coins then coins.Value = data.Coins end
-			if gems  then gems.Value  = data.Gems  end
-		end
-		Remotes.UpdateBalance:FireClient(player, {
-			Coins = data.Coins,
-			Gems  = data.Gems,
-		})
+	if not data then return end
+
+	local definitions = PetService.GetEquippedPetDefinitions(player)
+	local ratePerSec = 0
+	for _, pet in definitions do
+		ratePerSec += pet.passiveIncomePerSec
 	end
+	ratePerSec = ratePerSec * (data.RebirthMultiplier or 1)
+
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if leaderstats then
+		local coins = leaderstats:FindFirstChild("Coins")
+		local gems  = leaderstats:FindFirstChild("Gems")
+		if coins then coins.Value = data.Coins end
+		if gems  then gems.Value  = data.Gems  end
+	end
+
+	Remotes.UpdateBalance:FireClient(player, {
+		Coins       = data.Coins,
+		Gems        = data.Gems,
+		IncomePerSec = ratePerSec,   -- new field
+	})
 end
 
 local function setupLeaderstats(player: Player, data)
@@ -42,7 +52,6 @@ function MoneyService.OnPlayerReady(player: Player)
 	syncBalance(player)
 end
 
--- Pure data writes — no remote fired
 function MoneyService.AddCoins(player: Player, amount: number)
 	assert(type(amount) == "number" and amount > 0, "Invalid amount")
 	local data = DataService.GetData(player)
@@ -56,7 +65,7 @@ function MoneyService.SpendCoins(player: Player, amount: number): boolean
 	if not data then return false end
 	if data.Coins < amount then return false end
 	data.Coins -= amount
-	syncBalance(player)  -- spend is an explicit action; sync immediately
+	syncBalance(player)
 	return true
 end
 
