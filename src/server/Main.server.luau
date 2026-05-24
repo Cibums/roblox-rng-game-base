@@ -1,8 +1,10 @@
-print("[Server] boot script running")
-
 local Players = game:GetService("Players")
 local DataService = require(script.Parent.DataService)
 local MoneyService = require(script.Parent.MoneyService)
+local PetService = require(script.Parent.PetService)
+local IncomeService = require(script.Parent.IncomeService)
+
+IncomeService.Start()
 
 Players.PlayerAdded:Connect(function(player)
 	task.defer(function()
@@ -13,6 +15,7 @@ Players.PlayerAdded:Connect(function(player)
 		end
 		if DataService.GetProfile(player) then
 			MoneyService.OnPlayerReady(player)
+			PetService.GiveStarterPetIfNeeded(player)
 		end
 	end)
 end)
