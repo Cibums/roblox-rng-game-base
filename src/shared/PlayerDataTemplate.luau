@@ -6,6 +6,7 @@ return {
 	DailyStreak              = 0,
 	LastClaimTimestamp       = 0,
 	OfflineEarningsTimestamp = 0,
+	IncomePerSec             = 0,
 	OwnedPets                = {},
 	EquippedPetIds           = {},
 	MaxEquipSlots            = 3,

@@ -1,6 +1,5 @@
 local Players = game:GetService("Players")
 local DataService = require(script.Parent.DataService)
-local PetService = require(script.Parent.PetService)
 local Remotes = require(game.ReplicatedStorage.Shared.Remotes)
 
 local MoneyService = {}
@@ -8,13 +7,6 @@ local MoneyService = {}
 local function syncBalance(player: Player)
 	local data = DataService.GetData(player)
 	if not data then return end
-
-	local definitions = PetService.GetEquippedPetDefinitions(player)
-	local ratePerSec = 0
-	for _, pet in definitions do
-		ratePerSec += pet.passiveIncomePerSec
-	end
-	ratePerSec = ratePerSec * (data.RebirthMultiplier or 1)
 
 	local leaderstats = player:FindFirstChild("leaderstats")
 	if leaderstats then
@@ -25,9 +17,9 @@ local function syncBalance(player: Player)
 	end
 
 	Remotes.UpdateBalance:FireClient(player, {
-		Coins       = data.Coins,
-		Gems        = data.Gems,
-		IncomePerSec = ratePerSec,   -- new field
+		Coins        = data.Coins,
+		Gems         = data.Gems,
+		IncomePerSec = data.IncomePerSec or 0,
 	})
 end
 

@@ -13,6 +13,10 @@ local REMOTE_EVENT_NAMES = {
 
 local REMOTE_FUNCTION_NAMES = {
 	"RollGacha",
+	"GetInventory",
+	"EquipPet", 
+	"UnequipPet",
+	"EquipBest",
 }
 
 local folder
@@ -20,38 +24,26 @@ if IS_SERVER then
 	folder = Instance.new("Folder")
 	folder.Name = "Remotes"
 	folder.Parent = ReplicatedStorage
-
 	for _, name in REMOTE_EVENT_NAMES do
-		local remote = Instance.new("RemoteEvent")
-		remote.Name = name
-		remote.Parent = folder
+		local r = Instance.new("RemoteEvent")
+		r.Name = name
+		r.Parent = folder
 	end
-
 	for _, name in REMOTE_FUNCTION_NAMES do
-		local remote = Instance.new("RemoteFunction")
-		remote.Name = name
-		remote.Parent = folder
+		local r = Instance.new("RemoteFunction")
+		r.Name = name
+		r.Parent = folder
 	end
 else
 	folder = ReplicatedStorage:WaitForChild("Remotes", 10)
 end
 
 local Remotes = {}
-
 for _, name in REMOTE_EVENT_NAMES do
-	if IS_SERVER then
-		Remotes[name] = folder:FindFirstChild(name)
-	else
-		Remotes[name] = folder:WaitForChild(name, 10)
-	end
+	Remotes[name] = IS_SERVER and folder:FindFirstChild(name) or folder:WaitForChild(name, 10)
 end
-
 for _, name in REMOTE_FUNCTION_NAMES do
-	if IS_SERVER then
-		Remotes[name] = folder:FindFirstChild(name)
-	else
-		Remotes[name] = folder:WaitForChild(name, 10)
-	end
+	Remotes[name] = IS_SERVER and folder:FindFirstChild(name) or folder:WaitForChild(name, 10)
 end
 
 return Remotes
