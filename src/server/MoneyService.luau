@@ -7,6 +7,21 @@ local MoneyService = {}
 local function syncBalance(player: Player)
 	local data = DataService.GetData(player)
 	if data then
+
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			local coins = leaderstats:FindFirstChild("Coins")
+			local gems = leaderstats:FindFirstChild("Gems")
+			
+			if coins then 
+				coins.Value = data.Coins 
+			end
+
+			if gems then 
+				gems.Value = data.Gems 
+			end
+		end
+
 		Remotes.UpdateBalance:FireClient(player, {
 			Coins = data.Coins,
 			Gems  = data.Gems,
@@ -14,7 +29,24 @@ local function syncBalance(player: Player)
 	end
 end
 
+local function setupLeaderstats(player: Player, data)
+	local leaderstats = Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = player
+
+	local coins = Instance.new("IntValue")
+	coins.Name = "Coins"
+	coins.Value = data.Coins
+	coins.Parent = leaderstats
+
+	local gems = Instance.new("IntValue")
+	gems.Name = "Gems"
+	gems.Value = data.Gems
+	gems.Parent = leaderstats
+end
+
 function MoneyService.OnPlayerReady(player: Player)
+	setupLeaderstats(player, DataService.GetData(player))
 	syncBalance(player)
 end
 
