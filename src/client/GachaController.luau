@@ -3,16 +3,13 @@ local TweenService = game:GetService("TweenService")
 local Remotes = require(game.ReplicatedStorage.Shared.Remotes)
 local UIComponents = require(script.Parent.UIComponents)
 local CollectiblesData = require(game.ReplicatedStorage.Shared.CollectiblesData)
+local MutationsData = require(game.ReplicatedStorage.Shared.MutationsData)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local GachaController = {}
 local isRolling = false
-
--- ─────────────────────────────────────────────
--- Result card: shown for each pet received
--- ─────────────────────────────────────────────
 
 local RARITY_COLORS = {
 	Common    = Color3.fromRGB(180, 180, 180),
@@ -24,9 +21,17 @@ local RARITY_COLORS = {
 	Divine    = Color3.fromRGB(255, 220, 255),
 }
 
-local function showResultCard(result: { collectibleId: string })
+local function showResultCard(result: { collectibleId: string, mutationId: string? })
 	local pet = CollectiblesData.ById[result.collectibleId]
 	if not pet then return end
+
+	local mutation = result.mutationId and MutationsData.ById[result.mutationId] or nil
+
+	-- Border color: mutation color takes priority over rarity color
+	local borderColor = RARITY_COLORS[pet.rarity] or RARITY_COLORS.Common
+	if mutation then
+		borderColor = Color3.fromRGB(mutation.color.r, mutation.color.g, mutation.color.b)
+	end
 
 	local screen = Instance.new("ScreenGui")
 	screen.Name = "GachaResult"
@@ -42,17 +47,18 @@ local function showResultCard(result: { collectibleId: string })
 	backdrop.Parent = screen
 
 	local card = Instance.new("Frame")
-	card.Size = UDim2.new(0, 260, 0, 200)
+	card.Size = UDim2.new(0, 260, 0, mutation and 230 or 200)
 	card.AnchorPoint = Vector2.new(0.5, 0.5)
 	card.Position = UDim2.fromScale(0.5, 0.5)
 	card.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
 	card.BorderSizePixel = 0
 	card.Parent = screen
 	UIComponents.makeCorner(card, 14)
-	UIComponents.makeStroke(card, RARITY_COLORS[pet.rarity] or RARITY_COLORS.Common, 2.5)
+	UIComponents.makeStroke(card, borderColor, mutation and 3.5 or 2)
 
+	-- Rarity label
 	local rarityLabel = Instance.new("TextLabel")
-	rarityLabel.Size = UDim2.new(1, 0, 0, 30)
+	rarityLabel.Size = UDim2.new(1, 0, 0, 28)
 	rarityLabel.Position = UDim2.new(0, 0, 0, 12)
 	rarityLabel.BackgroundTransparency = 1
 	rarityLabel.Text = pet.rarity:upper()
@@ -61,9 +67,10 @@ local function showResultCard(result: { collectibleId: string })
 	rarityLabel.Font = Enum.Font.GothamBold
 	rarityLabel.Parent = card
 
+	-- Pet name
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.new(1, -16, 0, 44)
-	nameLabel.Position = UDim2.new(0, 8, 0, 50)
+	nameLabel.Size = UDim2.new(1, -16, 0, 40)
+	nameLabel.Position = UDim2.new(0, 8, 0, 44)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = pet.displayName
 	nameLabel.TextColor3 = Color3.fromRGB(240, 240, 255)
@@ -72,21 +79,53 @@ local function showResultCard(result: { collectibleId: string })
 	nameLabel.TextWrapped = true
 	nameLabel.Parent = card
 
+	-- Mutation badge — only shown if a mutation was rolled
+	local incomeYOffset = 90
+	if mutation then
+		local mutColor = Color3.fromRGB(mutation.color.r, mutation.color.g, mutation.color.b)
+
+		local badge = Instance.new("Frame")
+		badge.Size = UDim2.new(1, -32, 0, 28)
+		badge.Position = UDim2.new(0, 16, 0, 90)
+		badge.BackgroundColor3 = mutColor
+		badge.BackgroundTransparency = 0.7
+		badge.BorderSizePixel = 0
+		badge.Parent = card
+		UIComponents.makeCorner(badge, 6)
+		UIComponents.makeStroke(badge, mutColor, 1.5)
+
+		local mutLabel = Instance.new("TextLabel")
+		mutLabel.Size = UDim2.fromScale(1, 1)
+		mutLabel.BackgroundTransparency = 1
+		mutLabel.Text = string.format("✨ %s  (%d×)", mutation.displayName, mutation.valueMultiplier)
+		mutLabel.TextColor3 = mutColor
+		mutLabel.TextScaled = true
+		mutLabel.Font = Enum.Font.GothamBold
+		mutLabel.Parent = badge
+
+		incomeYOffset = 126
+	end
+
+	-- Income rate (after mutation multiplier)
+	local effectiveIncome = pet.passiveIncomePerSec * (mutation and mutation.valueMultiplier or 1)
 	local incomeLabel = Instance.new("TextLabel")
-	incomeLabel.Size = UDim2.new(1, -16, 0, 30)
-	incomeLabel.Position = UDim2.new(0, 8, 0, 100)
+	incomeLabel.Size = UDim2.new(1, -16, 0, 28)
+	incomeLabel.Position = UDim2.new(0, 8, 0, incomeYOffset)
 	incomeLabel.BackgroundTransparency = 1
-	incomeLabel.Text = string.format("🪙 %s / sec", UIComponents.formatNumber(pet.passiveIncomePerSec))
+	incomeLabel.Text = string.format("🪙 %s / sec", UIComponents.formatNumber(effectiveIncome))
 	incomeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 	incomeLabel.TextScaled = true
 	incomeLabel.Font = Enum.Font.Gotham
 	incomeLabel.Parent = card
 
+	-- Dismiss button
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(1, -32, 0, 36)
-	btn.Position = UDim2.new(0, 16, 1, -48)
-	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 180)
-	btn.Text = "Nice!"
+	btn.Position = UDim2.new(0, 16, 1, -46)
+	btn.BackgroundColor3 = mutation
+		and Color3.fromRGB(mutation.color.r // 2, mutation.color.g // 2, mutation.color.b // 2)
+		or  Color3.fromRGB(60, 60, 180)
+	btn.Text = mutation and "🎉 Amazing!" or "Nice!"
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.TextScaled = true
 	btn.Font = Enum.Font.GothamBold
@@ -94,41 +133,36 @@ local function showResultCard(result: { collectibleId: string })
 	btn.Parent = card
 	UIComponents.makeCorner(btn, 8)
 
-	btn.MouseButton1Click:Connect(function()
+	local function dismiss()
 		local info = TweenInfo.new(0.15)
 		TweenService:Create(backdrop, info, { BackgroundTransparency = 1 }):Play()
 		TweenService:Create(card, info, { BackgroundTransparency = 1 }):Play()
 		for _, child in card:GetDescendants() do
-			if child:IsA("TextLabel") or child:IsA("TextButton") then
-				TweenService:Create(child, info, { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
+			if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("Frame") then
+				pcall(function()
+					TweenService:Create(child, info, {
+						BackgroundTransparency = 1,
+						TextTransparency = 1,
+					}):Play()
+				end)
 			end
 		end
 		task.delay(0.2, function() screen:Destroy() end)
-	end)
+	end
 
-	-- Auto-dismiss after 3 seconds so multi-rolls don't stack up
+	btn.MouseButton1Click:Connect(dismiss)
 	task.delay(3, function()
-		if screen and screen.Parent then
-			screen:Destroy()
-		end
+		if screen and screen.Parent then dismiss() end
 	end)
 end
 
--- ─────────────────────────────────────────────
--- Receive results pushed by server (Robux purchases)
--- ─────────────────────────────────────────────
-
-local function onGachaResult(results: { { collectibleId: string } })
+local function onGachaResult(results)
 	for i, result in results do
 		task.delay((i - 1) * 0.6, function()
 			showResultCard(result)
 		end)
 	end
 end
-
--- ─────────────────────────────────────────────
--- Request a roll from the server, show results
--- ─────────────────────────────────────────────
 
 function GachaController.Roll(count: number, currency: "Coins" | "Gems")
 	if isRolling then return end
@@ -143,18 +177,11 @@ function GachaController.Roll(count: number, currency: "Coins" | "Gems")
 			end)
 		end
 	else
-		-- Show a brief "not enough coins" message
-		local reason = (response and response.reason) or "Roll failed"
-		warn("[GachaController]", reason)
-		-- TODO: surface this to the player in the shop UI
+		warn("[GachaController]", response and response.reason or "Roll failed")
 	end
 
 	isRolling = false
 end
-
--- ─────────────────────────────────────────────
--- Temporary test button — remove when the real shop UI exists
--- ─────────────────────────────────────────────
 
 local function buildTestButton()
 	local screen = Instance.new("ScreenGui")
@@ -165,7 +192,6 @@ local function buildTestButton()
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0, 140, 0, 44)
 	btn.Position = UDim2.new(1, -156, 0, 16)
-	btn.AnchorPoint = Vector2.new(0, 0)
 	btn.BackgroundColor3 = Color3.fromRGB(80, 60, 180)
 	btn.Text = "🎲 Roll (1)"
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)

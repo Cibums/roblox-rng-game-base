@@ -5,13 +5,14 @@ local DataService = require(script.Parent.DataService)
 local MoneyService = require(script.Parent.MoneyService)
 local PetService = require(script.Parent.PetService)
 local CollectiblesData = require(game.ReplicatedStorage.Shared.CollectiblesData)
+local MutationsData = require(game.ReplicatedStorage.Shared.MutationsData)
 local GachaConfig = require(game.ReplicatedStorage.Shared.GachaConfig)
 local Remotes = require(game.ReplicatedStorage.Shared.Remotes)
 
 local GachaService = {}
 
 -- ─────────────────────────────────────────────
--- Internal: weighted random pick
+-- Weighted random collectible pick
 -- ─────────────────────────────────────────────
 
 local function pickCollectible()
@@ -23,18 +24,36 @@ local function pickCollectible()
 			return pet
 		end
 	end
-	return CollectiblesData.List[1]   -- fallback; should never reach here
+	return CollectiblesData.List[1]
 end
 
 -- ─────────────────────────────────────────────
--- Internal: execute N rolls, award pets, return result list
--- Returns nil if the spend failed (insufficient funds)
+-- Mutation roll
+-- luckBonus is the flat bonus from the pet definition (e.g. +3 for Rare)
+-- Each mutation is checked rarest-first; stops at the first hit.
+-- luckBonus scales each mutation's chance: chance * (1 + luckBonus * 0.05)
+-- So a pet with luckBonus 20 has 2× the base mutation chance.
 -- ─────────────────────────────────────────────
 
-local function executeRolls(player: Player, count: number, currency: "Coins" | "Gems"): { { collectibleId: string } }?
+local function rollMutation(luckBonus: number): string?
+	local scale = 1 + (luckBonus * 0.05)
+	for _, mutation in MutationsData.List do   -- rarest first
+		local chance = mutation.baseRollChance * scale
+		if math.random() < chance then
+			return mutation.id
+		end
+	end
+	return nil
+end
+
+-- ─────────────────────────────────────────────
+-- Execute N rolls, award pets with mutations, return result list
+-- ─────────────────────────────────────────────
+
+local function executeRolls(player: Player, count: number, currency: "Coins" | "Gems"): { { collectibleId: string, mutationId: string? } }?
 	local costs = currency == "Gems"
 		and GachaConfig.GEM_ROLL_COSTS
-		or GachaConfig.COIN_ROLL_COSTS
+		or  GachaConfig.COIN_ROLL_COSTS
 
 	local cost = costs[count]
 	if not cost then
@@ -42,18 +61,30 @@ local function executeRolls(player: Player, count: number, currency: "Coins" | "
 		return nil
 	end
 
-	-- Spend first — if the player can't afford it, bail before touching inventory
 	local success = currency == "Gems"
 		and MoneyService.SpendGems(player, cost)
 		or  MoneyService.SpendCoins(player, cost)
 
 	if not success then return nil end
 
+	local data = DataService.GetData(player)
+	if not data then return nil end
+
 	local results = {}
 	for i = 1, count do
-		local pet = pickCollectible()
-		PetService.GivePet(player, pet.id, i == 1)   -- auto-equip only the first if slots open
-		table.insert(results, { collectibleId = pet.id })
+		local petDef = pickCollectible()
+		local ownedPet = PetService.GivePet(player, petDef.id, i == 1)
+
+		if ownedPet then
+			-- Roll mutation using this pet's luck bonus
+			local mutationId = rollMutation(petDef.luckBonus)
+			ownedPet.mutationId = mutationId   -- write to the saved record
+
+			table.insert(results, {
+				collectibleId = petDef.id,
+				mutationId    = mutationId,     -- nil if no mutation
+			})
+		end
 	end
 
 	MoneyService.SyncBalance(player)
@@ -61,12 +92,10 @@ local function executeRolls(player: Player, count: number, currency: "Coins" | "
 end
 
 -- ─────────────────────────────────────────────
--- Public: called by the RemoteFunction binding below
--- Returns { success: bool, results: table?, reason: string? }
+-- Public roll — called by RemoteFunction
 -- ─────────────────────────────────────────────
 
 function GachaService.Roll(player: Player, count: number, currency: "Coins" | "Gems")
-	-- Validate inputs — never trust the client
 	if type(count) ~= "number" then
 		return { success = false, reason = "Invalid count" }
 	end
@@ -86,16 +115,12 @@ function GachaService.Roll(player: Player, count: number, currency: "Coins" | "G
 end
 
 -- ─────────────────────────────────────────────
--- ProcessReceipt — the Robux monetization handler
--- CRITICAL: only return PurchaseGranted after a confirmed data write.
--- Roblox will retry the receipt if we return NotProcessedYet or crash.
+-- ProcessReceipt
 -- ─────────────────────────────────────────────
 
 local function processReceipt(receiptInfo)
 	local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
 	if not player then
-		-- Player left mid-purchase. Return NotProcessedYet so Roblox retries
-		-- when they next join.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
@@ -104,7 +129,6 @@ local function processReceipt(receiptInfo)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- Idempotency check — don't double-grant if the receipt replays
 	local receiptKey = tostring(receiptInfo.PurchaseId)
 	if data.ProcessedReceipts[receiptKey] then
 		return Enum.ProductPurchaseDecision.PurchaseGranted
@@ -113,23 +137,27 @@ local function processReceipt(receiptInfo)
 	local product = GachaConfig.PRODUCTS[receiptInfo.ProductId]
 	if not product then
 		warn("[GachaService] Unknown ProductId:", receiptInfo.ProductId)
-		-- Unknown product — grant anyway to avoid Roblox locking the purchase
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
-	-- Grant the product
 	local grantOk, grantErr = pcall(function()
 		if product.type == "gems" then
 			MoneyService.AddGems(player, product.amount)
 			MoneyService.SyncBalance(player)
 
 		elseif product.type == "coinRolls" then
-			-- Free rolls purchased with Robux — execute without spending coins
 			local results = {}
 			for i = 1, product.amount do
-				local pet = pickCollectible()
-				PetService.GivePet(player, pet.id, i == 1)
-				table.insert(results, { collectibleId = pet.id })
+				local petDef = pickCollectible()
+				local ownedPet = PetService.GivePet(player, petDef.id, i == 1)
+				if ownedPet then
+					local mutationId = rollMutation(petDef.luckBonus)
+					ownedPet.mutationId = mutationId
+					table.insert(results, {
+						collectibleId = petDef.id,
+						mutationId    = mutationId,
+					})
+				end
 			end
 			MoneyService.SyncBalance(player)
 			Remotes.ShowGachaResult:FireClient(player, results)
@@ -141,7 +169,6 @@ local function processReceipt(receiptInfo)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- Log the receipt — prune oldest if over the cap
 	data.ProcessedReceipts[receiptKey] = true
 	local keys = {}
 	for k in data.ProcessedReceipts do table.insert(keys, k) end
@@ -156,16 +183,13 @@ end
 MarketplaceService.ProcessReceipt = processReceipt
 
 -- ─────────────────────────────────────────────
--- RemoteFunction binding — client calls this to request a roll
+-- Init
 -- ─────────────────────────────────────────────
 
 function GachaService.Init()
 	Remotes.RollGacha.OnServerInvoke = function(player, count, currency)
-		-- Extra server-side guard: rate-limit rapid repeat calls
-		-- (a proper debounce table would go here in production)
 		return GachaService.Roll(player, count, currency)
 	end
-
 	print("[GachaService] Initialised")
 end
 

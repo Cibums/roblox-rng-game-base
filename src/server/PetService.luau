@@ -9,6 +9,7 @@ local function createOwnedPet(collectibleId: string): Types.OwnedPet
 	return {
 		instanceId    = HttpService:GenerateGUID(false),
 		collectibleId = collectibleId,
+		mutationId    = nil,
 		level         = 1,
 		isEquipped    = false,
 		acquiredAt    = os.time(),
@@ -23,7 +24,6 @@ end
 local function getWeakestEquipped(data): (string?, number)
 	local weakestId = nil
 	local weakestIncome = math.huge
-
 	for _, instanceId in data.EquippedPetIds do
 		local owned = data.OwnedPets[instanceId]
 		if owned then
@@ -34,11 +34,9 @@ local function getWeakestEquipped(data): (string?, number)
 			end
 		end
 	end
-
 	return weakestId, weakestIncome == math.huge and 0 or weakestIncome
 end
 
--- Unequips a pet by instance ID
 local function unequip(data, instanceId: string)
 	local owned = data.OwnedPets[instanceId]
 	if owned then
@@ -50,6 +48,11 @@ local function unequip(data, instanceId: string)
 			break
 		end
 	end
+end
+
+-- New: lets IncomeService look up a definition without re-requiring CollectiblesData
+function PetService.GetDefinition(collectibleId: string): Types.Pet?
+	return CollectiblesData.ById[collectibleId]
 end
 
 function PetService.GivePet(player: Player, collectibleId: string, autoEquip: boolean?): Types.OwnedPet?
@@ -66,13 +69,10 @@ function PetService.GivePet(player: Player, collectibleId: string, autoEquip: bo
 
 	if autoEquip then
 		local newIncome = CollectiblesData.ById[collectibleId].passiveIncomePerSec
-
 		if #data.EquippedPetIds < data.MaxEquipSlots then
-			-- Free slot available — equip directly
 			pet.isEquipped = true
 			table.insert(data.EquippedPetIds, pet.instanceId)
 		else
-			-- All slots full — replace the weakest if the new pet is better
 			local weakestId, weakestIncome = getWeakestEquipped(data)
 			if weakestId and newIncome > weakestIncome then
 				unequip(data, weakestId)
@@ -88,7 +88,6 @@ end
 function PetService.GetEquippedPetDefinitions(player: Player): { Types.Pet }
 	local data = DataService.GetData(player)
 	if not data then return {} end
-
 	local definitions = {}
 	for _, instanceId in data.EquippedPetIds do
 		local ownedPet = data.OwnedPets[instanceId]
@@ -99,7 +98,6 @@ function PetService.GetEquippedPetDefinitions(player: Player): { Types.Pet }
 			end
 		end
 	end
-
 	return definitions
 end
 
